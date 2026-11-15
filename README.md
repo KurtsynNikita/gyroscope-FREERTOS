@@ -38,3 +38,9 @@
 Сборка:
 ```bash
 make -j4
+```
+
+Прошивка:
+```bash
+st-flash --reset write build/GyroRTOS_hardcore.bin 0x8000000
+```
