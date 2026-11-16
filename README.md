@@ -66,5 +66,5 @@ make -j4
 ### Flashing
 To flash the compiled binary to the MCU using ST-Link:
 ```bash
-st-flash --reset write build_cmake/GyroRTOS_CMake.bin 0x8000000
+st-flash --reset write build_cmake/GyroRTOS_CMSIS.bin 0x8000000
 ```
