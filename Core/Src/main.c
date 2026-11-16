@@ -18,6 +18,8 @@ int main(void)
   BSP_UART_Init();
   BSP_GYRO_Init();
 
+  xTraceEnable(TRC_START);
+
   osKernelInitialize();
   MX_FREERTOS_Init();
   osKernelStart();
