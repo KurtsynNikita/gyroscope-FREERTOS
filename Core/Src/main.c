@@ -14,14 +14,17 @@ int main(void)
   HAL_Init();
   SystemClock_Config();
 
+  // Инициализация драйверов
   BSP_GPIO_Init();
   BSP_UART_Init();
   BSP_GYRO_Init();
 
+  // Инициализация Tracealyzer
   xTraceEnable(TRC_START);
 
+  // Инициализация FREERTOS
   osKernelInitialize();
-  MX_FREERTOS_Init();
+  FREERTOS_Init();
   osKernelStart();
 
   while (1) {}
@@ -67,8 +70,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 void Error_Handler(void)
 {
   __disable_irq();
-  while (1)
-  {
-  }
+  while (1) {}
 }
 

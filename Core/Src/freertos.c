@@ -4,31 +4,13 @@
 #include "main.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h> 
 #include "stm32f4xx_hal.h" 
+#include "bsp_gyro.h"
 
 #include "bsp_gpio.h"
 #include "bsp_gyro.h"
 #include "bsp_uart.h"
-
-#define MODE_1                  1
-#define MODE_2                  2
-
-#define MIN_PERIOD_MS           10
-#define MAX_PERIOD_MS           10000
-#define DEFAULT_PERIOD_MS       500
-
-#define GYRO_TASK_DELAY_MS      10
-#define LED_TASK_DELAY_MS       50
-#define BUTTON_DEBOUNCE_MS      50
-#define RX_TASK_DELAY_MS        1000
-#define STARTUP_DELAY_MS        100
-
-#define GYRO_QUEUE_LENGTH       10
-#define UART_QUEUE_LENGTH       5
-#define TX_BUFFER_SIZE          64
-
-#define STACK_SIZE_NORMAL       (256 * 4)
-#define STACK_SIZE_SMALL        (128 * 4)
 
 typedef struct { 
     int16_t x; 
@@ -113,7 +95,7 @@ extern SPI_HandleTypeDef hspi5;
 void Gyro_Init(void);
 void Gyro_ReadXYZ(int16_t *x, int16_t *y, int16_t *z);
 
-void MX_FREERTOS_Init(void) {
+void FREERTOS_Init(void) {
 
   // Создание мьютекса
   SharedDataMutexHandle = osMutexNew(&SharedDataMutex_attributes);
@@ -131,7 +113,8 @@ void MX_FREERTOS_Init(void) {
   LedTaskHandle = osThreadNew(LedTask_Entry, NULL, &LedTask_attributes);
 }
 
-// Реализация задач
+// Реализация задач ------------------------
+// Чтение данных с гироскопа
 void GyroTask_Entry(void *argument) {
   GyroData_t gyro_data;
 
@@ -146,6 +129,7 @@ void GyroTask_Entry(void *argument) {
   }
 }
 
+// Отправка сообщений по UART
 void UartTxTask_Entry(void *argument) {
   GyroData_t rx_data; // Данные из очереди
   char tx_buffer[64];
@@ -166,71 +150,93 @@ void UartTxTask_Entry(void *argument) {
   }
 }
 
+// Прием сообщений по UART
 void UartRxTask_Entry(void *argument) {
-  // Запускаем асинхронный прием ОДИН раз при старте задачи
+  // Запускаем асинхронный прием один раз при старте задачи
   BSP_UART_StartReceive(); 
-  
   for(;;) {
     osDelay(RX_TASK_DELAY_MS);
   }
 }
 
+// Контроль за состоянием кнопки
 void ButtonTask_Entry(void *argument) {
   for(;;) {
-    osThreadFlagsWait(0x01, osFlagsWaitAny, osWaitForever); // Ждем прерывание от кнопки с флагом 0x001 и сбрасываем его
-    osDelay(50); // Антидребезг
-    if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_RESET) {
+    osThreadFlagsWait(BUTTON_PRESS_FLAG, osFlagsWaitAny, osWaitForever);  // Ждем флаг от кнопки
+    osDelay(BUTTON_DEBOUNCE_MS);  // Антидребезг
+    if (GpioRead(BUTTON_PORT, BUTTON_PIN) == LOW) {
       osMutexAcquire(SharedDataMutexHandle, osWaitForever);
-      current_mode = (current_mode == 1) ? 2 : 1; // Смена режима
+      current_mode = (current_mode == MODE_1) ? MODE_2 : MODE_1; 
       osMutexRelease(SharedDataMutexHandle);
     }
   }
 }
 
+// Валидация введенных пользователем данных через UART
 void ValidationTask_Entry(void *argument) {
-  char rx_str[32];
-  char tx_buffer[64];
+  char rx_str[UART_BUFFER_SIZE]; // Размер берем из bsp_uart.h (обычно 32)
+  char tx_buffer[TX_BUFFER_SIZE]; // Размер берем из freertos.c (обычно 64)
+
   for(;;) {
-    if (osMessageQueueGet(UartRxQueueHandle, rx_str, NULL, osWaitForever) == osOK) { // Ждем пока не соберется целая строка
+    // Ждем, пока прерывание не соберет целую строку и не положит её в очередь
+    if (osMessageQueueGet(UartRxQueueHandle, rx_str, NULL, osWaitForever) == osOK) { 
       osMutexAcquire(SharedDataMutexHandle, osWaitForever);
-      uint8_t mode = current_mode; // Безопасно читаем режим
+      uint8_t mode = current_mode; // Безопасно читаем текущий режим
       osMutexRelease(SharedDataMutexHandle);
-      
-      if (mode == 1) {
-        int value = atoi(rx_str);
-        if (value >= 10 && value <= 10000) {
-          osMutexAcquire(SharedDataMutexHandle, osWaitForever);
-          period_ms = value; // Безопасно меняем значение периода 
-          osMutexRelease(SharedDataMutexHandle);
-          int len = snprintf(tx_buffer, sizeof(tx_buffer), "OK: %d ms\r\n", value);
-          HAL_UART_Transmit(&huart1, (uint8_t*)tx_buffer, len, 100);
-        } else {
-          int len = snprintf(tx_buffer, sizeof(tx_buffer), "Error: 10..10000\r\n");
-          HAL_UART_Transmit(&huart1, (uint8_t*)tx_buffer, len, 100);
+      if (mode == MODE_1) {
+        char *endptr;
+        long value = strtol(rx_str, &endptr, 10);
+
+        if (endptr == rx_str) {
+            // Ни одной цифры не прочитано ("abc" или пустая строка)
+            const char *err = "Error: not a number\r\n";
+            HAL_UART_Transmit(&huart1, (uint8_t *)err, strlen(err), 100);
+        }
+        else if (*endptr != '\0') {
+            // После числа остались лишние символы ("123abc" или "12.5")
+            const char *err = "Error: trailing chars\r\n";
+            HAL_UART_Transmit(&huart1, (uint8_t *)err, strlen(err), 100);
+        }
+        else if (value < MIN_PERIOD_MS || value > MAX_PERIOD_MS) {
+            // Число вне допустимого диапазона
+            int len = snprintf(tx_buffer, sizeof(tx_buffer), "Error: %d..%d ms\r\n", MIN_PERIOD_MS, MAX_PERIOD_MS);
+            HAL_UART_Transmit(&huart1, (uint8_t *)tx_buffer, len, 100);
+        }
+        else {
+            // Безопасно применяем настройку
+            osMutexAcquire(SharedDataMutexHandle, osWaitForever);
+            period_ms = (uint32_t)value;
+            osMutexRelease(SharedDataMutexHandle);
+            
+            int len = snprintf(tx_buffer, sizeof(tx_buffer), "Period set: %ld ms\r\n", value);
+            HAL_UART_Transmit(&huart1, (uint8_t *)tx_buffer, len, 100);
         }
       }
     }
   }
 }
 
+// Управление светодиодами
 void LedTask_Entry(void *argument) {
   uint8_t last_mode = 0;
+  
   for(;;) {
     osMutexAcquire(SharedDataMutexHandle, osWaitForever);
-    uint8_t mode = current_mode;
+    uint8_t mode = current_mode; // Безопасно читаем текущий режим
     osMutexRelease(SharedDataMutexHandle);
-    
+
     if (mode != last_mode) {
-      if (mode == 1) {
-        GpioWrite(GPIOG, 14, 1); // Red on
-        GpioWrite(GPIOG, 13, 0); // Green off
+      if (mode == MODE_1) {
+        GpioWrite(LED_RED_PORT, LED_RED_PIN, HIGH);
+        GpioWrite(LED_GREEN_PORT, LED_GREEN_PIN, LOW);
       } else {
-        GpioWrite(GPIOG, 14, 0);
-        GpioWrite(GPIOG, 13, 1);
+        GpioWrite(LED_RED_PORT, LED_RED_PIN, LOW);
+        GpioWrite(LED_GREEN_PORT, LED_GREEN_PIN, HIGH);
       }
       last_mode = mode;
     }
-    osDelay(50);
+    
+    osDelay(LED_TASK_DELAY_MS);
   }
 }
 

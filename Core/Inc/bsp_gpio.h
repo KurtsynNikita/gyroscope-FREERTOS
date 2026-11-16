@@ -34,6 +34,9 @@
 
 #define BUTTON_IRQ_PRIO  5
 
+#define LOW   0
+#define HIGH  1
+
 void BSP_GPIO_Init(void);
 void GpioInit(GPIO_TypeDef *port, uint8_t pin, uint8_t mode, uint8_t otype, uint8_t speed, uint8_t pull);
 void GpioWrite(GPIO_TypeDef *port, uint8_t pin, uint8_t value);
