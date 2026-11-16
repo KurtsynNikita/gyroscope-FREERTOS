@@ -180,8 +180,9 @@ void ValidationTask_Entry(void *argument) {
   for(;;) {
     // Ждем, пока прерывание не соберет целую строку и не положит её в очередь
     if (osMessageQueueGet(UartRxQueueHandle, rx_str, NULL, osWaitForever) == osOK) { 
+      // Безопасно читаем текущий режим
       osMutexAcquire(SharedDataMutexHandle, osWaitForever);
-      uint8_t mode = current_mode; // Безопасно читаем текущий режим
+      uint8_t mode = current_mode; 
       osMutexRelease(SharedDataMutexHandle);
       if (mode == MODE_1) {
         char *endptr;

@@ -1,59 +1,59 @@
 # STM32F429 Gyroscope FreeRTOS Project
 
-Проект разработан в рамках учебного задания. Демонстрирует работу с периферией STM32F429 без использования автоматической генерации кода CubeMX (инициализация периферии написана вручную на регистрах и HAL).
+This project was developed as part of a university assignment. It demonstrates working with STM32F429 peripherals without using automatic code generation via CubeMX (peripheral initialization is written manually using registers and HAL).
 
-## Аппаратное обеспечение
-* **Микроконтроллер:** STM32F429ZIT6 (Cortex-M4)
-* **Отладочная плата:** STM32F429I-DISCOVERY
-* **Датчик:** 3-осевой гироскоп L3GD20 (подключен по SPI5)
-* **Интерфейс связи:** USART1 (PA9/PA10) через внешний USB-UART
+## Hardware
+* **Microcontroller:** STM32F429ZIT6 (Cortex-M4)
+* **Development board:** STM32F429I-DISCOVERY
+* **Sensor:** 3-axis gyroscope L3GD20 (connected via SPI5)
+* **Communication interface:** USART1 (PA9/PA10) via external USB-UART
 
-## Архитектура проекта
-Проект разделен на слои (по принципу OSI) для обеспечения модульности и чистоты кода:
-* **BSP (Board Support Package):** `bsp_gpio.c`, `bsp_uart.c`, `bsp_gyro.c` — низкоуровневые драйверы для работы с регистрами.
-* **Application (Логика):** `freertos.c` — бизнес-логика приложения, реализованная в виде 6 независимых задач FreeRTOS.
-* **Entry Point:** `main.c` — инициализация тактирования, вызов BSP и запуск планировщика.
+## Project Architecture
+The project is divided into layers (following the OSI principle) to ensure modularity and clean code:
+* **BSP (Board Support Package):** `bsp_gpio.c`, `bsp_uart.c`, `bsp_gyro.c` — low-level drivers for working with registers.
+* **Application (Logic):** `freertos.c` — application business logic implemented as 6 independent FreeRTOS tasks.
+* **Entry Point:** `main.c` — clock initialization, BSP calls, and scheduler startup.
 
-## Задачи FreeRTOS (6 шт.)
-1. **GyroTask** — опрос гироскопа по SPI (100 Гц).
-2. **UartTxTask** — отправка показаний в терминал.
-3. **UartRxTask** — запуск асинхронного приема UART.
-4. **ButtonTask** — обработка нажатий кнопки (USER).
-5. **ValidationTask** — парсинг и валидация команд, введенных пользователем.
-6. **LedTask** — управление светодиодами.
+## FreeRTOS Tasks (6 total)
+1. **GyroTask** — polling the gyroscope via SPI (100 Hz).
+2. **UartTxTask** — sending readings to the terminal.
+3. **UartRxTask** — starting asynchronous UART reception.
+4. **ButtonTask** — handling button presses (USER).
+5. **ValidationTask** — parsing and validating user-entered commands.
+6. **LedTask** — LED control.
 
-## Механизмы синхронизации
-* **Очереди сообщений (Queues):** `GyroQueue` (передача данных от датчика) и `UartRxQueue` (передача строк от UART).
-* **Мьютекс (Mutex):** `SharedDataMutex` для защиты общих переменных `current_mode` и `period_ms`.
-* **Уведомления задач (Task Notifications):** для мгновенного пробуждения `ButtonTask` из прерывания EXTI.
+## Synchronization Mechanisms
+* **Message Queues:** `GyroQueue` (data transfer from the sensor) and `UartRxQueue` (string transfer from UART).
+* **Mutex:** `SharedDataMutex` to protect the shared variables `current_mode` and `period_ms`.
+* **Task Notifications:** for instantly waking up `ButtonTask` from the EXTI interrupt.
 
-## Профилирование (Percepio Tracealyzer)
-В проект интегрирована библиотека **TraceRecorder** для визуализации работы планировщика FreeRTOS.
-* **Режим записи:** Snapshot (Ring Buffer).
-* **Как снять дамп:** Программа останавливается через отладчик (GDB/OpenOCD), содержимое буфера выгружается в файл `trace.bin` и открывается в Percepio Tracealyzer.
-* **Что визуализируется:** Временная шкала переключения задач (Gantt Chart), загрузка CPU, события работы очередей и мьютексов, а также срабатывания прерываний.
+## Profiling (Percepio Tracealyzer)
+The **TraceRecorder** library is integrated into the project to visualize the FreeRTOS scheduler's operation.
+* **Recording mode:** Snapshot (Ring Buffer).
+* **How to capture a dump:** The program is halted via the debugger (GDB/OpenOCD), the buffer contents are dumped to a `trace.bin` file, and it is opened in Percepio Tracealyzer.
+* **What is visualized:** Task switching timeline (Gantt Chart), CPU load, queue and mutex events, as well as interrupt triggers.
 
-## Функционал
-* **Режим 1:** Горит красный светодиод. Через UART можно задать период вывода данных (от 10 до 10000 мс).
-* **Режим 2:** Горит зеленый светодиод. В терминал непрерывно выводятся координаты X, Y, Z с заданным периодом.
-* Переключение режимов осуществляется коротким нажатием кнопки USER.
+## Functionality
+* **Mode 1:** Red LED is on. The data output period can be set via UART (from 10 to 10000 ms).
+* **Mode 2:** Green LED is on. X, Y, Z coordinates are continuously output to the terminal at the specified period.
+* Mode switching is performed by a short press of the USER button.
 
-## Сборка и прошивка
-Проект собирается с помощью `arm-none-eabi-gcc` и поддерживает две системы сборки:
+## Build and Flash
+The project is built using `arm-none-eabi-gcc` and supports two build systems:
 
-**Вариант 1: CMake (Рекомендуется)**
+**Option 1: CMake (Recommended)**
 ```bash
 mkdir build_cmake && cd build_cmake
 cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/arm-none-eabi.cmake ..
 make -j4
 ```
 
-**Вариант 2: Makefile**
+**Option 2: Makefile**
 ```bash
 make -j4
 ```
 
-**Прошивка**
+**Flashing**
 ```bash
 st-flash --reset write build_cmake/GyroRTOS_CMake.bin 0x8000000
 ```
