@@ -39,21 +39,32 @@ The **TraceRecorder** library is integrated into the project to visualize the Fr
 * Mode switching is performed by a short press of the USER button.
 
 ## Build and Flash
-The project is built using `arm-none-eabi-gcc` and supports two build systems:
+The project is built using `arm-none-eabi-gcc` and supports two build systems: **CMake** (recommended) and **Makefile**.
 
-**Option 1: CMake (Recommended)**
+### Option 1: CMake (Recommended)
+The project includes a `CMakePresets.json` file. This allows seamless integration with **VS Code** and the **CMake Tools** extension. 
+* It automatically applies the correct `arm-none-eabi.cmake` toolchain file.
+* It sets the build directory to `build_cmake`.
+* It resolves bare-metal compilation issues (like missing `_exit`).
+
+To build via terminal:
 ```bash
-mkdir build_cmake && cd build_cmake
-cmake -DCMAKE_TOOLCHAIN_FILE=../cmake/arm-none-eabi.cmake ..
+cmake --preset arm-debug
+cmake --build build_cmake -j4
+```
+
+(Or simply click the "Build" button in the VS Code CMake Tools status bar).
+
+Note on Cross-Platform: The CMakePresets.json is currently configured for Linux/macOS using the Unix Makefiles generator. If you want to build this project on Windows, you will need to change the generator in CMakePresets.json to MinGW Makefiles or Ninja.
+
+### Option 2: Makefile
+If you prefer the traditional approach without CMake presets:
+```bash
 make -j4
 ```
 
-**Option 2: Makefile**
-```bash
-make -j4
-```
-
-**Flashing**
+### Flashing
+To flash the compiled binary to the MCU using ST-Link:
 ```bash
 st-flash --reset write build_cmake/GyroRTOS_CMake.bin 0x8000000
 ```

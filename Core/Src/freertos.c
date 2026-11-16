@@ -88,12 +88,14 @@ void UartRxTask_Entry(void *argument);
 void ButtonTask_Entry(void *argument);
 void ValidationTask_Entry(void *argument);
 void LedTask_Entry(void *argument);
+void Gyro_Init(void);
+void Gyro_ReadXYZ(int16_t *x, int16_t *y, int16_t *z);
+
 extern void GpioWrite(GPIO_TypeDef *port, uint8_t pin, uint8_t value);
 extern uint8_t GpioRead(GPIO_TypeDef *port, uint8_t pin);
 extern UART_HandleTypeDef huart1;
 extern SPI_HandleTypeDef hspi5;
-void Gyro_Init(void);
-void Gyro_ReadXYZ(int16_t *x, int16_t *y, int16_t *z);
+
 
 void FREERTOS_Init(void) {
 
@@ -113,19 +115,19 @@ void FREERTOS_Init(void) {
   LedTaskHandle = osThreadNew(LedTask_Entry, NULL, &LedTask_attributes);
 }
 
-// Реализация задач ------------------------
+// Реализация задач -------------------------
 // Чтение данных с гироскопа
 void GyroTask_Entry(void *argument) {
   GyroData_t gyro_data;
 
   Gyro_Calibrate(); 
 
-  osDelay(100); // Задержка, чтобы другие задачи успели запуститься
+  osDelay(STARTUP_DELAY_MS); // Задержка, чтобы другие задачи успели запуститься
 
   for(;;) {
     Gyro_ReadXYZ(&gyro_data.x, &gyro_data.y, &gyro_data.z);
-    osMessageQueuePut(GyroQueueHandle, &gyro_data, 0, 0); // Отправка данных в очередь
-    osDelay(10); // Усыпляем задачу на 10 мс, чтобы пришли новые данные гироскопа
+    osMessageQueuePut(GyroQueueHandle, &gyro_data, 0, QUEUE_NO_WAIT); // Отправка данных в очередь
+    osDelay(GYRO_TASK_DELAY_MS); // Усыпляем задачу на 10 мс, чтобы пришли новые данные гироскопа
   }
 }
 
@@ -136,12 +138,13 @@ void UartTxTask_Entry(void *argument) {
   uint32_t last_print = 0;
   for(;;) {
     if (osMessageQueueGet(GyroQueueHandle, &rx_data, NULL, osWaitForever) == osOK) { // Спит пока в очереди пусто
-      osMutexAcquire(SharedDataMutexHandle, osWaitForever); // Поднимаем мьютекc
+      // Сохраняем значения в локальные переменные
+      osMutexAcquire(SharedDataMutexHandle, osWaitForever); 
       uint8_t mode = current_mode; // Сохраняем значения в локальные переменные
       uint32_t period = period_ms;
-      osMutexRelease(SharedDataMutexHandle); // Опускаем мьютекс
+      osMutexRelease(SharedDataMutexHandle); 
       
-      if (mode == 2 && (osKernelGetTickCount() - last_print >= period)) { // выводим данные только во втором режиме
+      if (mode == MODE_2 && (osKernelGetTickCount() - last_print >= period)) { // выводим данные только во втором режиме
         last_print = osKernelGetTickCount();
         int len = snprintf(tx_buffer, sizeof(tx_buffer), "X:%d Y:%d Z:%d\r\n", rx_data.x, rx_data.y, rx_data.z);
         HAL_UART_Transmit(&huart1, (uint8_t*)tx_buffer, len, 100);
@@ -222,8 +225,9 @@ void LedTask_Entry(void *argument) {
   uint8_t last_mode = 0;
   
   for(;;) {
+    // Безопасно читаем текущий режим
     osMutexAcquire(SharedDataMutexHandle, osWaitForever);
-    uint8_t mode = current_mode; // Безопасно читаем текущий режим
+    uint8_t mode = current_mode; 
     osMutexRelease(SharedDataMutexHandle);
 
     if (mode != last_mode) {

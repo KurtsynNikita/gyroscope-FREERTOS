@@ -27,6 +27,7 @@
 #define STACK_SIZE_SMALL        (128 * 4)
 
 #define BUTTON_PRESS_FLAG       0x01
+#define QUEUE_NO_WAIT           0
 
 // Хэндлы задач и очередей 
 extern osThreadId_t ButtonTaskHandle;
